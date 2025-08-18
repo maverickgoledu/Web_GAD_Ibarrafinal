@@ -2,7 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { Shield, Users, TrendingUp, MapPin, Calendar, Award, Store, FileText, MessageSquare } from 'lucide-react';
 import '../styles/home.css';
 
-const Home: React.FC = () => {
+interface HomeProps {
+  onNavigate?: (section: string) => void;
+}
+
+const Home: React.FC<HomeProps> = ({ onNavigate }) => {
   const [currentQuote, setCurrentQuote] = useState(0);
   const [currentTime, setCurrentTime] = useState(new Date());
   const [mounted, setMounted] = useState(false);
@@ -156,8 +160,8 @@ const Home: React.FC = () => {
               <Users className="home-section-icon" />
               Accesos Rápidos
             </h3>
-            <div className="home-quicklinks-grid">
-              <button className="home-quicklink">
+              <div className="home-quicklinks-grid">
+              <button className="home-quicklink" onClick={() => onNavigate && onNavigate('requerimientos')}>
                 <div className="home-quicklink-content">
                   <div className="home-quicklink-icon-container">
                     <FileText className="home-quicklink-icon" />
@@ -165,7 +169,7 @@ const Home: React.FC = () => {
                   <span className="home-quicklink-label">Nuevo Requisito</span>
                 </div>
               </button>
-              <button className="home-quicklink home-quicklink-blue">
+              <button className="home-quicklink home-quicklink-blue" onClick={() => onNavigate && onNavigate('mensajeria')}>
                 <div className="home-quicklink-content">
                   <div className="home-quicklink-icon-container">
                     <MessageSquare className="home-quicklink-icon" />
@@ -173,7 +177,7 @@ const Home: React.FC = () => {
                   <span className="home-quicklink-label">Mensajes</span>
                 </div>
               </button>
-              <button className="home-quicklink home-quicklink-green">
+              <button className="home-quicklink home-quicklink-green" onClick={() => onNavigate && onNavigate('ferias')}>
                 <div className="home-quicklink-content">
                   <div className="home-quicklink-icon-container">
                     <Calendar className="home-quicklink-icon" />
@@ -181,7 +185,7 @@ const Home: React.FC = () => {
                   <span className="home-quicklink-label">Nueva Feria</span>
                 </div>
               </button>
-              <button className="home-quicklink home-quicklink-purple">
+              <button className="home-quicklink home-quicklink-purple" onClick={() => onNavigate && onNavigate('locales')}>
                 <div className="home-quicklink-content">
                   <div className="home-quicklink-icon-container">
                     <Store className="home-quicklink-icon" />

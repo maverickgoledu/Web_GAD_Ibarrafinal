@@ -16,35 +16,41 @@ export class ApiService {
   // *** MÉTODOS DE GESTIÓN DE TOKEN MEJORADOS ***
   
   private getAuthToken(): string | null {
-    // Prioridad: memoria > sessionStorage > localStorage
+    // Prioridad: memoria > sessionStorage > localStorage (múltiples claves de compatibilidad)
     if (this.authToken) {
       return this.authToken;
     }
-    
+
+    const STORAGE_KEYS = ['auth_token', 'authToken', 'token'];
+
     // Intentar recuperar de sessionStorage
     try {
-      const sessionToken = sessionStorage.getItem('auth_token');
-      if (sessionToken) {
-        this.authToken = sessionToken;
-        console.log('🔄 Token recuperado desde sessionStorage');
-        return sessionToken;
+      for (const key of STORAGE_KEYS) {
+        const sessionToken = sessionStorage.getItem(key);
+        if (sessionToken) {
+          this.authToken = sessionToken;
+          console.log(`🔄 Token recuperado desde sessionStorage (${key})`);
+          return sessionToken;
+        }
       }
     } catch (error) {
       console.warn('⚠️ Error accediendo sessionStorage:', error);
     }
-    
+
     // Intentar recuperar de localStorage como respaldo
     try {
-      const localToken = localStorage.getItem('auth_token');
-      if (localToken) {
-        this.authToken = localToken;
-        console.log('🔄 Token recuperado desde localStorage');
-        return localToken;
+      for (const key of STORAGE_KEYS) {
+        const localToken = localStorage.getItem(key);
+        if (localToken) {
+          this.authToken = localToken;
+          console.log(`🔄 Token recuperado desde localStorage (${key})`);
+          return localToken;
+        }
       }
     } catch (error) {
       console.warn('⚠️ Error accediendo localStorage:', error);
     }
-    
+
     return null;
   }
 
@@ -53,10 +59,12 @@ export class ApiService {
     console.log('🔐 Token guardado exitosamente en memoria');
     console.log('🔑 Token preview:', token.substring(0, 50) + '...');
     
-    // Guardar en sessionStorage (prioridad alta)
+    // Guardar en sessionStorage (prioridad alta) usando varias claves por compatibilidad
     try {
       sessionStorage.setItem('auth_token', token);
-      console.log('💾 Token guardado en sessionStorage');
+      sessionStorage.setItem('authToken', token);
+      sessionStorage.setItem('token', token);
+      console.log('💾 Token guardado en sessionStorage (auth_token/authToken/token)');
     } catch (error) {
       console.warn('⚠️ Error guardando en sessionStorage:', error);
     }
@@ -64,7 +72,10 @@ export class ApiService {
     // Guardar en localStorage como respaldo
     try {
       localStorage.setItem('auth_token', token);
-      console.log('💾 Token guardado en localStorage');
+      localStorage.setItem('authToken', token);
+      localStorage.setItem('token', token);
+      localStorage.setItem('isAuthenticated', 'true');
+      console.log('💾 Token guardado en localStorage (auth_token/authToken/token)');
     } catch (error) {
       console.warn('⚠️ Error guardando en localStorage:', error);
     }
@@ -77,6 +88,8 @@ export class ApiService {
     // Limpiar de sessionStorage
     try {
       sessionStorage.removeItem('auth_token');
+      sessionStorage.removeItem('authToken');
+      sessionStorage.removeItem('token');
       console.log('🗑️ Token eliminado de sessionStorage');
     } catch (error) {
       console.warn('⚠️ Error limpiando sessionStorage:', error);
@@ -85,6 +98,9 @@ export class ApiService {
     // Limpiar de localStorage
     try {
       localStorage.removeItem('auth_token');
+      localStorage.removeItem('authToken');
+      localStorage.removeItem('token');
+      localStorage.removeItem('isAuthenticated');
       console.log('🗑️ Token eliminado de localStorage');
     } catch (error) {
       console.warn('⚠️ Error limpiando localStorage:', error);
@@ -615,6 +631,26 @@ export class ApiService {
     });
 
     return this.request<PaginatedResponse<ProyectoAPI>>(`/admin/pending?${params}`, {
+      method: 'GET'
+    });
+  }
+
+  /**
+   * Obtiene las estadísticas del dashboard del administrador
+   * Endpoint documentado en swagger: GET /admin/get-dashboard-stats
+   */
+  public async getAdminDashboardStats(): Promise<ApiResponse<{
+    totalUsers: number;
+    pendingUsers: number;
+    approvedUsers: number;
+    rejectedUsers?: number;
+  }>> {
+    return this.request<{
+      totalUsers: number;
+      pendingUsers: number;
+      approvedUsers: number;
+      rejectedUsers?: number;
+    }>(`/admin/get-dashboard-stats`, {
       method: 'GET'
     });
   }

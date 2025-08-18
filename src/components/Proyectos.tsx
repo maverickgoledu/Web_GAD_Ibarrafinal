@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { FolderOpen, Plus, Search, Filter, Calendar, User, TrendingUp, Eye, Edit, Trash2, Check, X, ChevronLeft, ChevronRight, FileText, Download, MessageSquare, Send } from 'lucide-react';
+import { FolderOpen, Plus, Search, Filter, Calendar, User, TrendingUp, Eye, Edit, Trash2, Check, X, ChevronLeft, ChevronRight, FileText, Download, MessageSquare, Send, ZoomIn, ZoomOut, RotateCw } from 'lucide-react';
 import { ApiService } from './login/ApiService'; 
 import '../styles/proyectos.css';
 
@@ -64,13 +64,14 @@ const validarEstado = (estado: string | undefined): 'pendiente' | 'aprobado' | '
     case 'finished':
     case 'terminado':
       return 'completado';
-default: {
-  const estadosValidos = ['pendiente', 'aprobado', 'rechazado', 'en-progreso', 'completado'] as const;
-if ((estadosValidos as readonly string[]).includes(estado)) {
-    return estado as 'pendiente' | 'aprobado' | 'rechazado' | 'en-progreso' | 'completado';
+    default: {
+      const estadosValidos = ['pendiente', 'aprobado', 'rechazado', 'en-progreso', 'completado'] as const;
+      if ((estadosValidos as readonly string[]).includes(estado)) {
+        return estado as 'pendiente' | 'aprobado' | 'rechazado' | 'en-progreso' | 'completado';
+      }
+      return 'pendiente';
+    }
   }
-  return 'pendiente';
-}}
 };
 
 const Proyectos: React.FC = () => {
@@ -84,6 +85,223 @@ const Proyectos: React.FC = () => {
     rechazados: 0
   });
   
+  // *** COMPONENTE DOCUMENTVIEWER COMPLETO ***
+  const DocumentViewer = ({ 
+    isOpen, 
+    onClose, 
+    documentData, 
+    documentName, 
+    documentType 
+  }: {
+    isOpen: boolean;
+    onClose: () => void;
+    documentData?: string;
+    documentName?: string;
+    documentType?: string;
+  }) => {
+    const [zoom, setZoom] = useState<number>(100);
+    const [rotation, setRotation] = useState<number>(0);
+    const [loading, setLoading] = useState<boolean>(true);
+    const [error, setError] = useState<string>('');
+    const [imageLoaded, setImageLoaded] = useState<boolean>(false);
+
+    // Reset estados cuando se abre/cierra el modal
+    useEffect(() => {
+      if (isOpen) {
+        setZoom(100);
+        setRotation(0);
+        setLoading(true);
+        setError('');
+        setImageLoaded(false);
+        
+        const timer = setTimeout(() => {
+          setLoading(false);
+        }, 500);
+        
+        return () => clearTimeout(timer);
+      }
+    }, [isOpen]);
+
+    if (!isOpen) return null;
+
+    if (!documentData || !documentName) {
+      return (
+        <div className="document-viewer-overlay">
+          <div className="document-viewer-container">
+            <div className="document-viewer-error">
+              <FileText className="document-viewer-error-icon" />
+              <h3>Error al cargar documento</h3>
+              <p>No se pudieron cargar los datos del documento</p>
+              <button onClick={onClose} className="document-viewer-cancel-btn">
+                Cerrar
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // Función para detectar tipo de archivo
+    const getFileTypeAndMime = (): { fileType: string; mimeType: string } => {
+      const fileName = documentName.toLowerCase();
+      
+      if (documentData) {
+        if (documentData.startsWith('JVBERi') || documentData.startsWith('JVBER')) {
+          return { fileType: 'pdf', mimeType: 'application/pdf' };
+        }
+        if (documentData.startsWith('/9j/')) {
+          return { fileType: 'image', mimeType: 'image/jpeg' };
+        }
+        if (documentData.startsWith('iVBOR')) {
+          return { fileType: 'image', mimeType: 'image/png' };
+        }
+      }
+      
+      if (fileName.includes('.pdf')) {
+        return { fileType: 'pdf', mimeType: 'application/pdf' };
+      }
+      if (fileName.includes('.jpg') || fileName.includes('.jpeg')) {
+        return { fileType: 'image', mimeType: 'image/jpeg' };
+      }
+      if (fileName.includes('.png')) {
+        return { fileType: 'image', mimeType: 'image/png' };
+      }
+      
+      return { fileType: 'pdf', mimeType: 'application/pdf' };
+    };
+    
+    const { fileType, mimeType } = getFileTypeAndMime();
+    
+    const cleanBase64Data = (data: string): string => {
+      if (!data) return '';
+      let cleanData = data.replace(/^data:[^;]+;base64,/, '');
+      cleanData = cleanData.replace(/\s/g, '');
+      return cleanData;
+    };
+
+    const cleanedData = cleanBase64Data(documentData);
+    const dataUrl = `data:${mimeType};base64,${cleanedData}`;
+
+    const handleDownload = (): void => {
+      try {
+        const link = document.createElement('a');
+        link.href = dataUrl;
+        link.download = documentName;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      } catch (err) {
+        alert('Error al descargar el documento');
+      }
+    };
+
+    const handleZoomIn = (): void => setZoom(prev => Math.min(200, prev + 25));
+    const handleZoomOut = (): void => setZoom(prev => Math.max(25, prev - 25));
+    const handleRotate = (): void => setRotation(prev => (prev + 90) % 360);
+
+    return (
+      <div className="document-viewer-overlay">
+        <div className="document-viewer-container">
+          {/* Header */}
+          <div className="document-viewer-header">
+            <div className="document-viewer-title">
+              <FileText className="w-5 h-5 text-blue-600 mr-2" />
+              <h3 title={documentName}>{documentName}</h3>
+            </div>
+            
+            <div className="document-viewer-controls">
+              {fileType === 'image' && !loading && imageLoaded && (
+                <>
+                  <button onClick={handleZoomOut} className="document-viewer-control-btn" disabled={zoom <= 25}>
+                    <ZoomOut className="w-4 h-4" />
+                  </button>
+                  <span className="document-viewer-zoom-text">{zoom}%</span>
+                  <button onClick={handleZoomIn} className="document-viewer-control-btn" disabled={zoom >= 200}>
+                    <ZoomIn className="w-4 h-4" />
+                  </button>
+                  <button onClick={handleRotate} className="document-viewer-control-btn">
+                    <RotateCw className="w-4 h-4" />
+                  </button>
+                </>
+              )}
+              <button onClick={onClose} className="document-viewer-close-btn">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+          </div>
+
+          {/* Content */}
+          <div className="document-viewer-content">
+            <div className="document-viewer-content-inner">
+              {loading ? (
+                <div className="document-viewer-loading">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mr-3"></div>
+                  <span>Cargando documento...</span>
+                </div>
+              ) : error ? (
+                <div className="document-viewer-error">
+                  <FileText className="document-viewer-error-icon" />
+                  <h3>Error al cargar</h3>
+                  <p>{error}</p>
+                </div>
+              ) : fileType === 'pdf' ? (
+                <iframe
+                  src={dataUrl}
+                  className="document-viewer-iframe"
+                  title={documentName}
+                  onError={() => setError('Error al cargar el archivo PDF')}
+                />
+              ) : (
+                <div className="document-viewer-image-container">
+                  {!imageLoaded && !error && (
+                    <div className="document-viewer-loading">
+                      <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600 mr-2"></div>
+                      <span>Cargando imagen...</span>
+                    </div>
+                  )}
+                  <img
+                    src={dataUrl}
+                    alt={documentName}
+                    className="document-viewer-image"
+                    style={{
+                      transform: `scale(${zoom / 100}) rotate(${rotation}deg)`,
+                      transition: 'transform 0.2s ease',
+                      display: imageLoaded ? 'block' : 'none'
+                    }}
+                    onLoad={() => {
+                      setImageLoaded(true);
+                      setError('');
+                    }}
+                    onError={() => {
+                      setError('Error al cargar la imagen');
+                      setImageLoaded(false);
+                    }}
+                  />
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Footer */}
+          <div className="document-viewer-footer">
+            <div className="document-viewer-info">
+              {fileType === 'pdf' ? 'Documento PDF' : 'Imagen'} • {documentName}
+            </div>
+            <div className="document-viewer-actions">
+              <button onClick={handleDownload} className="document-viewer-download-btn" disabled={loading}>
+                <Download className="w-4 h-4 mr-2" />
+                Descargar
+              </button>
+              <button onClick={onClose} className="document-viewer-cancel-btn">
+                Cerrar
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   // Estados para filtros y búsqueda
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState('all');
@@ -118,9 +336,11 @@ const Proyectos: React.FC = () => {
   const [showViewModal, setShowViewModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   
-  // *** ESTADOS PARA DOCUMENTOS Y OBSERVACIONES ***
+  // Estados para documentos y observaciones
   const [showDocumentsModal, setShowDocumentsModal] = useState(false);
   const [showObservationModal, setShowObservationModal] = useState(false);
+  const [showDocumentViewer, setShowDocumentViewer] = useState(false);
+  const [currentViewDocument, setCurrentViewDocument] = useState<any>(null);
   const [observationText, setObservationText] = useState('');
   const [currentDocuments, setCurrentDocuments] = useState<DocumentoProyecto>({});
   const [loadingDocuments, setLoadingDocuments] = useState(false);
@@ -128,33 +348,24 @@ const Proyectos: React.FC = () => {
 
   // Función unificada para verificar token
   const verificarToken = (): boolean => {
-    console.log('🔍 Verificando estado de autenticación...');
-    
     const token = apiService.getCurrentToken();
     const isAuth = apiService.isAuthenticated();
     
-    console.log('🔑 Token actual:', token ? `${token.substring(0, 50)}...` : 'NO HAY TOKEN');
-    console.log('✅ ¿Está autenticado?:', isAuth);
-    
     if (!isAuth || !token) {
-      console.error('❌ No hay token de autenticación válido');
       setError('Sesión expirada. Por favor, inicie sesión nuevamente.');
       return false;
     }
     
-    // Verificar si el token está expirado
     if (apiService.isTokenExpired()) {
-      console.warn('⚠️ Token expirado');
       setError('Su sesión ha expirado. Por favor, inicie sesión nuevamente.');
       apiService.clearToken();
       return false;
     }
     
-    console.log('✅ Token válido y no expirado');
     return true;
   };
 
-  // *** FUNCIÓN PARA CARGAR DOCUMENTOS ***
+  // Función para cargar documentos
   const cargarDocumentos = async (userId: string) => {
     try {
       if (!verificarToken()) return;
@@ -162,9 +373,6 @@ const Proyectos: React.FC = () => {
       setLoadingDocuments(true);
       setDocumentError('');
       
-      console.log('📄 Cargando documentos para usuario:', userId);
-      
-      // Cargar los tres documentos en paralelo
       const [certificateResponse, identityResponse, signedResponse] = await Promise.allSettled([
         apiService.getUserCertificate(userId),
         apiService.getUserIdentityDocument(userId), 
@@ -173,61 +381,47 @@ const Proyectos: React.FC = () => {
       
       const documents: DocumentoProyecto = {};
       
-      // Procesar certificado
       if (certificateResponse.status === 'fulfilled' && certificateResponse.value.success) {
         documents.certificate = certificateResponse.value.data;
-        console.log('✅ Certificado cargado');
-      } else {
-        console.warn('⚠️ Error cargando certificado:', certificateResponse);
       }
       
-      // Procesar documento de identidad
       if (identityResponse.status === 'fulfilled' && identityResponse.value.success) {
         documents.identityDocument = identityResponse.value.data;
-        console.log('✅ Documento de identidad cargado');
-      } else {
-        console.warn('⚠️ Error cargando documento de identidad:', identityResponse);
       }
       
-      // Procesar documento firmado
       if (signedResponse.status === 'fulfilled' && signedResponse.value.success) {
         documents.signedDocument = signedResponse.value.data;
-        console.log('✅ Documento firmado cargado');
-      } else {
-        console.warn('⚠️ Error cargando documento firmado:', signedResponse);
       }
       
       setCurrentDocuments(documents);
       
-      // Verificar si al menos un documento se cargó
       const hasDocuments = Object.values(documents).some(doc => doc);
       if (!hasDocuments) {
         setDocumentError('No se pudieron cargar los documentos. Verifique que el usuario tenga documentos subidos.');
       }
       
     } catch (err) {
-      console.error('💥 Error cargando documentos:', err);
       setDocumentError('Error de conexión al cargar los documentos.');
     } finally {
       setLoadingDocuments(false);
     }
   };
 
-  // *** FUNCIÓN PARA ABRIR VENTANA DE DOCUMENTOS ***
+  // Función para abrir ventana de documentos
   const abrirDocumentos = async (proyecto: ProyectoAPI) => {
     setSelectedProyecto(proyecto);
     setShowDocumentsModal(true);
     await cargarDocumentos(proyecto.id);
   };
 
-  // *** FUNCIÓN PARA MANEJAR RECHAZO CON OBSERVACIÓN ***
+  // Función para manejar rechazo con observación
   const iniciarRechazo = (proyecto: ProyectoAPI) => {
     setSelectedProyecto(proyecto);
     setObservationText('');
     setShowObservationModal(true);
   };
 
-  // *** FUNCIÓN PARA ENVIAR RECHAZO CON OBSERVACIÓN - ACTUALIZADA ***
+  // Función para enviar rechazo con observación
   const enviarRechazo = async () => {
     if (!selectedProyecto) return;
     
@@ -245,63 +439,39 @@ const Proyectos: React.FC = () => {
       if (!verificarToken()) return;
       
       setLoading(true);
-      console.log('❌ Rechazando usuario con observación:', {
-        userId: selectedProyecto.id,
-        observacion: observationText.trim().substring(0, 100) + '...'
-      });
-      
-      // Usar el nuevo método rechazarUsuario que consume el endpoint correcto
       const response = await apiService.rechazarUsuario(selectedProyecto.id, observationText.trim());
-      console.log('📡 Respuesta de rechazo:', response);
       
       if (response.success) {
-        console.log('✅ Usuario rechazado exitosamente');
-        
-        // Cerrar modal de observación
         setShowObservationModal(false);
         setObservationText('');
         setSelectedProyecto(null);
-        
-        // Cerrar modal de documentos si está abierto
         setShowDocumentsModal(false);
         setCurrentDocuments({});
         setDocumentError('');
         
-        // Recargar proyectos para reflejar el cambio de estado
         await loadProyectos();
         setTimeout(() => filtrarProyectos(), 100);
+        loadDashboardStats();
         
-        // Mostrar mensaje de éxito más específico
         alert(`Usuario rechazado exitosamente. ${response.message || 'Se ha enviado la notificación con la observación.'}`);
-        
       } else {
-        console.error('❌ Error al rechazar usuario:', response.error);
-        
         if (response.status === 401) {
           setError('Su sesión ha expirado. Recargue la página e inicie sesión nuevamente.');
           apiService.clearToken();
-        } else if (response.status === 400) {
-          alert('Error: El usuario ya está habilitado y no puede ser rechazado.');
-        } else if (response.status === 403) {
-          alert('No tiene permisos para rechazar usuarios.');
-        } else if (response.status === 404) {
-          alert('Usuario no encontrado.');
         } else {
           alert(response.error || 'Error al rechazar usuario');
         }
       }
     } catch (err) {
-      console.error('💥 Error de conexión al rechazar usuario:', err);
       alert('Error de conexión al rechazar usuario. Verifique su conexión a internet.');
     } finally {
       setLoading(false);
     }
   };
 
-  // *** FUNCIÓN PARA DESCARGAR DOCUMENTO ***
+  // Función para descargar documento
   const descargarDocumento = (documentData: string, filename: string) => {
     try {
-      // Crear un enlace temporal para descargar
       const link = document.createElement('a');
       link.href = `data:application/octet-stream;base64,${documentData}`;
       link.download = filename;
@@ -309,87 +479,53 @@ const Proyectos: React.FC = () => {
       link.click();
       document.body.removeChild(link);
     } catch (err) {
-      console.error('Error descargando documento:', err);
       alert('Error al descargar el documento');
     }
   };
 
-  // Cargar proyectos con verificación de token mejorada
+  // Función para abrir documento en visor
+  const openDocumentViewer = (documentData: any, name: any, type: any) => {
+    if (!documentData) {
+      alert('Error: No hay datos del documento disponibles');
+      return;
+    }
+    
+    if (!name) {
+      name = `documento_${type || 'desconocido'}.pdf`;
+    }
+    
+    try {
+      const documentToView = {
+        data: documentData,
+        name: name,
+        type: type || 'pdf'
+      };
+      
+      setCurrentViewDocument(documentToView);
+      setShowDocumentViewer(true);
+      
+    } catch (error) {
+      alert('Error al abrir el visor de documentos');
+    }
+  };
+
+  // Cargar proyectos
   const loadProyectos = async (page: number = currentPage, size: number = pageSize) => {
     try {
       setLoading(true);
       setError('');
       
-      console.log('🚀 Iniciando carga de proyectos...');
-      
-      // Verificar token antes de hacer la petición
       if (!verificarToken()) {
         setLoading(false);
         return;
       }
       
-      console.log('📊 Parámetros de consulta:', { page, size, searchTerm });
-      
-      // Usar endpoints corregidos basados en swagger
-      // Siempre usar el endpoint de proyectos pendientes para obtener datos reales
-      console.log('🔍 Usando endpoint de proyectos pendientes...');
       const response = await apiService.getProyectosPendientes(page, size);
       
-      console.log('📡 Respuesta de la API:', response);
-      
       if (response.success && response.data) {
-        console.log('✅ Proyectos cargados exitosamente');
-        console.log('📋 Cantidad de proyectos:', response.data.content.length);
-        console.log('🔍 Datos de proyectos recibidos:', response.data.content);
+        const proyectosLimpios = response.data.content.filter(proyecto => proyecto && proyecto.id);
         
-        // Validar y limpiar datos antes de setear
-        const proyectosLimpios = response.data.content.filter(proyecto => {
-          if (!proyecto || !proyecto.id) {
-            console.warn('⚠️ Proyecto filtrado por datos incompletos:', proyecto);
-            return false;
-          }
-          
-          // Debug: Verificar estructura de datos
-          console.log('🔍 Estructura del proyecto recibido:', {
-            hasId: !!proyecto.id,
-            hasNombre: !!proyecto.nombre,
-            hasDescripcion: !!proyecto.descripcion,
-            hasEstado: !!proyecto.estado,
-            hasResponsable: !!proyecto.responsable,
-            hasCategoria: !!proyecto.categoria,
-            hasEmail: !!proyecto.email,
-            hasCedula: !!proyecto.cedula,
-            hasTelefono: !!proyecto.telefono,
-            hasAddress: !!proyecto.address,
-            nombreValue: proyecto.nombre,
-            categoriaValue: proyecto.categoria,
-            responsableValue: proyecto.responsable,
-            emailValue: proyecto.email,
-            cedulaValue: proyecto.cedula,
-            telefonoValue: proyecto.telefono,
-            addressValue: proyecto.address,
-            phoneValue: proyecto.phone,
-            direccionValue: proyecto.direccion
-          });
-          
-          return true;
-        });
-        
-        console.log('📋 Proyectos después del filtrado:', proyectosLimpios.length);
-        
-        // Normalizar datos de proyectos para asegurar compatibilidad
         const proyectosNormalizados = proyectosLimpios.map(proyecto => {
-          console.log('🔍 Datos originales del proyecto:', proyecto);
-          console.log('🔍 Campos específicos del proyecto:', {
-            phone: proyecto.phone,
-            telefono: proyecto.telefono,
-            address: proyecto.address,
-            direccion: proyecto.direccion,
-            email: proyecto.email,
-            cedula: proyecto.cedula
-          });
-          
-          // Datos de prueba si no hay datos reales
           const datosPrueba = {
             phone: '0987654321',
             address: 'Av. Amazonas y Naciones Unidas, Quito',
@@ -397,7 +533,7 @@ const Proyectos: React.FC = () => {
             cedula: '1234567890'
           };
           
-          const proyectoNormalizado: ProyectoAPI = {
+          return {
             id: proyecto.id,
             nombre: proyecto.nombre || proyecto.name || proyecto.title || '',
             descripcion: proyecto.descripcion || proyecto.description || proyecto.desc || '',
@@ -412,118 +548,100 @@ const Proyectos: React.FC = () => {
             cedula: proyecto.cedula || proyecto.identification || proyecto.identificacion || datosPrueba.cedula,
             telefono: proyecto.phone || proyecto.telefono || proyecto.tel || proyecto.celular || datosPrueba.phone,
             address: proyecto.address || proyecto.direccion || proyecto.location || datosPrueba.address
-          };
-          
-          console.log('🔍 Proyecto normalizado:', proyectoNormalizado);
-          return proyectoNormalizado;
+          } as ProyectoAPI;
         });
-        
-        console.log('📋 Proyectos normalizados:', proyectosNormalizados);
         
         setProyectos(proyectosNormalizados);
         setTotalPages(response.data.totalPages);
         setTotalElements(response.data.totalElements);
         setCurrentPage(response.data.pageable.pageNumber);
         
-        // Aplicar filtros después de cargar los proyectos
         setTimeout(() => filtrarProyectos(), 0);
-        
-        // Limpiar error de renderizado cuando carga exitosa
         setRenderError('');
         
-        // Calcular estadísticas
-        calculateStats(proyectosLimpios, response.data.totalElements);
-        
       } else {
-        console.error('❌ Error en respuesta:', response.error || response.message);
-        
-        // Manejar errores de autenticación específicamente
         if (response.status === 401) {
           setError('Su sesión ha expirado. Por favor, inicie sesión nuevamente.');
           apiService.clearToken();
           window.location.reload();
-        } else if (response.status === 403) {
-          setError('No tiene permisos para ver los proyectos. Contacte al administrador.');
-        } else if (response.status === 404) {
-          setError('Endpoint no encontrado. Verifique la configuración del servidor.');
         } else {
           setError(response.error || response.message || 'Error al cargar proyectos');
         }
         setProyectos([]);
       }
     } catch (err) {
-      console.error('💥 Error de conexión al cargar proyectos:', err);
-      
-      // Manejo mejorado de errores de red
-      if (err instanceof Error) {
-        if (err.message.includes('fetch') || err.message.includes('Failed to fetch')) {
-          setError('Error de conexión. Verifique que el servidor esté disponible.');
-        } else if (err.message.includes('timeout') || err.message.includes('AbortError')) {
-          setError('La conexión tardó demasiado tiempo. Intente nuevamente.');
-        } else {
-          setError(`Error de conexión: ${err.message}`);
-        }
-      } else {
-        setError('Error de conexión al cargar proyectos. Verifique su conexión a internet.');
-      }
+      setError('Error de conexión al cargar proyectos. Verifique su conexión a internet.');
     } finally {
       setLoading(false);
     }
   };
 
-  // Calcular estadísticas
-  const calculateStats = (proyectosList: ProyectoAPI[], total: number) => {
-    const pendientes = proyectosList.filter(p => p.estado === 'pendiente').length;
-    const aprobados = proyectosList.filter(p => p.estado === 'aprobado').length;
-    const rechazados = proyectosList.filter(p => p.estado === 'rechazado').length;
-    
-    setStats({
-      totalProyectos: total,
-      pendientes,
-      aprobados,
-      rechazados
-    });
+  // Cargar estadísticas desde el backend
+  const loadDashboardStats = async () => {
+    try {
+      if (!verificarToken()) return;
+
+      const [bizStatsRes, adminStatsRes] = await Promise.allSettled([
+        apiService.getBusinessStats(),
+        apiService.getAdminDashboardStats()
+      ]);
+
+      let total = 0, pending = 0, approved = 0, rejected = 0;
+
+      if (bizStatsRes.status === 'fulfilled' && bizStatsRes.value.success && bizStatsRes.value.data) {
+        const d: any = bizStatsRes.value.data;
+        total = Number(d.total ?? d.totalUsers ?? 0);
+        pending = Number(d.pending ?? d.pendingUsers ?? 0);
+        approved = Number(d.approved ?? d.approvedUsers ?? 0);
+        rejected = Number(d.rejected ?? d.rejectedUsers ?? 0);
+      } else if (adminStatsRes.status === 'fulfilled' && adminStatsRes.value.success && adminStatsRes.value.data) {
+        const d: any = adminStatsRes.value.data;
+        total = Number(d.totalUsers ?? d.total ?? 0);
+        pending = Number(d.pendingUsers ?? d.pending ?? 0);
+        approved = Number(d.approvedUsers ?? d.approved ?? 0);
+        rejected = Number(d.rejectedUsers ?? d.rejected ?? 0);
+      }
+
+      setStats({
+        totalProyectos: total,
+        pendientes: pending,
+        aprobados: approved,
+        rechazados: rejected
+      });
+    } catch (e) {
+      console.warn('No se pudieron cargar estadísticas del backend');
+    }
   };
 
-  // Aprobar proyecto con verificación mejorada
+  // Aprobar proyecto
   const aprobarProyecto = async (userId: string) => {
     try {
       if (!verificarToken()) return;
       
       setLoading(true);
-      console.log('✅ Aprobando proyecto:', userId);
-      
       const response = await apiService.aprobarProyecto(userId);
-      console.log('📡 Respuesta de aprobación:', response);
       
       if (response.success) {
-        console.log('🎉 Proyecto aprobado exitosamente');
         await loadProyectos();
-        // Actualizar estadísticas inmediatamente
         setTimeout(() => filtrarProyectos(), 100);
+        loadDashboardStats();
         alert('Proyecto aprobado exitosamente');
       } else {
-        console.error('❌ Error al aprobar:', response.error);
         if (response.status === 401) {
           setError('Su sesión ha expirado. Recargue la página e inicie sesión nuevamente.');
           apiService.clearToken();
-        } else if (response.status === 403) {
-          alert('No tiene permisos para aprobar proyectos');
-        } else if (response.status === 404) {
-          alert('Proyecto no encontrado o endpoint no disponible');
         } else {
           alert(response.error || 'Error al aprobar proyecto');
         }
       }
     } catch (err) {
-      console.error('💥 Error de conexión al aprobar proyecto:', err);
       alert('Error de conexión al aprobar proyecto');
     } finally {
       setLoading(false);
     }
   };
 
-  // Crear proyecto con verificación mejorada
+  // Crear proyecto
   const crearProyecto = async (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -548,13 +666,9 @@ const Proyectos: React.FC = () => {
         address: newProyecto.address.trim() || undefined
       };
       
-      console.log('➕ Creando proyecto:', proyectoData);
-      
       const response = await apiService.createProyecto(proyectoData);
-      console.log('📡 Respuesta de creación:', response);
       
       if (response.success) {
-        console.log('🎉 Proyecto creado exitosamente');
         setShowModal(false);
         setNewProyecto({
           nombre: '',
@@ -570,7 +684,6 @@ const Proyectos: React.FC = () => {
         await loadProyectos();
         alert('Proyecto creado exitosamente');
       } else {
-        console.error('❌ Error al crear:', response.error);
         if (response.status === 401) {
           setError('Su sesión ha expirado. Recargue la página e inicie sesión nuevamente.');
           apiService.clearToken();
@@ -579,7 +692,6 @@ const Proyectos: React.FC = () => {
         }
       }
     } catch (err) {
-      console.error('💥 Error de conexión al crear proyecto:', err);
       alert('Error de conexión al crear proyecto');
     } finally {
       setLoading(false);
@@ -605,14 +717,12 @@ const Proyectos: React.FC = () => {
   const filtrarProyectos = useCallback(() => {
     let proyectosFiltrados = proyectos;
 
-    // Filtrar por estado
     if (filterStatus !== 'all') {
       proyectosFiltrados = proyectosFiltrados.filter(proyecto => 
         proyecto.estado === filterStatus
       );
     }
 
-    // Filtrar por búsqueda
     if (searchTerm.trim() !== '') {
       const terminoBusqueda = searchTerm.toLowerCase();
       proyectosFiltrados = proyectosFiltrados.filter(proyecto => 
@@ -625,7 +735,6 @@ const Proyectos: React.FC = () => {
       );
     }
 
-    // Filtrar proyectos no registrados (sin nombre válido)
     proyectosFiltrados = proyectosFiltrados.filter(proyecto => 
       proyecto.nombre && proyecto.nombre.trim() !== ''
     );
@@ -636,39 +745,26 @@ const Proyectos: React.FC = () => {
   const handleFilterChange = (newFilter: string) => {
     setFilterStatus(newFilter);
     setCurrentPage(0);
-    // No recargar desde la API, solo filtrar localmente
     setTimeout(() => filtrarProyectos(), 0);
   };
 
-  // Efecto inicial con debugging mejorado
+  // Efectos
   useEffect(() => {
-    console.log('🚀 Iniciando componente Proyectos...');
-    console.log('🔍 Estado inicial del token:', {
-      isAuthenticated: apiService.isAuthenticated(),
-      currentToken: apiService.getCurrentToken()?.substring(0, 50) + '...',
-      isExpired: apiService.isTokenExpired()
-    });
-    
-    // Verificar token de manera más robusta
     const inicializar = async () => {
-      // Dar tiempo para que se inicialice el token si viene de login
       await new Promise(resolve => setTimeout(resolve, 100));
       
       if (!verificarToken()) {
-        console.error('❌ No hay token válido, no se cargarán los proyectos');
         setError('No hay sesión válida. Por favor, inicie sesión.');
         return;
       }
       
-      // Si hay token, cargar proyectos
-      console.log('✅ Token válido encontrado, cargando proyectos...');
       loadProyectos();
+      loadDashboardStats();
     };
     
     inicializar();
   }, []);
 
-  // Efecto para búsqueda con debounce
   useEffect(() => {
     if (!apiService.isAuthenticated()) return;
     
@@ -679,7 +775,6 @@ const Proyectos: React.FC = () => {
     return () => clearTimeout(delayedSearch);
   }, [searchTerm, filtrarProyectos]);
 
-  // Efecto para aplicar filtros cuando cambien los proyectos
   useEffect(() => {
     if (proyectos.length > 0) {
       filtrarProyectos();
@@ -708,36 +803,17 @@ const Proyectos: React.FC = () => {
   const renderProyectos = () => {
     try {
       return proyectosFiltrados.map((proyecto) => {
-        // Validación de datos del proyecto
         if (!proyecto || !proyecto.id) {
-          console.warn('⚠️ Proyecto con datos incompletos:', proyecto);
           return null;
         }
 
-        // Debug: Mostrar datos del proyecto
-        console.log('🔍 Datos del proyecto para renderizar:', {
-          id: proyecto.id,
-          nombre: proyecto.nombre,
-          descripcion: proyecto.descripcion,
-          estado: proyecto.estado,
-          responsable: proyecto.responsable,
-          categoria: proyecto.categoria,
-          email: proyecto.email,
-          cedula: proyecto.cedula,
-          telefono: proyecto.telefono,
-          address: proyecto.address
-        });
-
-        // Determinar el estado real del proyecto
         const estadoProyecto = proyecto.estado || 'pendiente';
         
-        // Función para generar un nombre descriptivo cuando no hay nombre
         const generarNombreDescriptivo = (proyecto: ProyectoAPI): string => {
           if (proyecto.nombre && proyecto.nombre.trim() !== '') {
             return proyecto.nombre;
           }
           
-          // Intentar generar un nombre basado en otros campos
           if (proyecto.categoria && proyecto.categoria.trim() !== '') {
             return `${proyecto.categoria} #${proyecto.id}`;
           }
@@ -746,7 +822,6 @@ const Proyectos: React.FC = () => {
             return `Proyecto de ${proyecto.responsable} #${proyecto.id}`;
           }
           
-          // Fallback al ID con indicación de que falta nombre
           return `Proyecto #${proyecto.id} (Sin nombre)`;
         };
         
@@ -806,7 +881,6 @@ const Proyectos: React.FC = () => {
             <div className="proyectos-card-footer">
               {estadoProyecto === 'pendiente' ? (
                 <>
-                  {/* *** BOTÓN ABRIR REEMPLAZA APROBAR/RECHAZAR *** */}
                   <button 
                     onClick={() => abrirDocumentos(proyecto)}
                     className="proyectos-action-button bg-blue-600 hover:bg-blue-700 text-white"
@@ -862,30 +936,20 @@ const Proyectos: React.FC = () => {
                         if (!verificarToken()) return;
                         
                         setLoading(true);
-                        console.log('🗑️ Eliminando proyecto:', proyecto.id);
-                        
                         const response = await apiService.deleteProyecto(proyecto.id);
-                        console.log('📡 Respuesta de eliminación:', response);
                         
                         if (response.success) {
-                          console.log('🎉 Proyecto eliminado exitosamente');
                           await loadProyectos();
                           alert('Proyecto eliminado exitosamente');
                         } else {
-                          console.error('❌ Error al eliminar:', response.error);
                           if (response.status === 401) {
                             setError('Su sesión ha expirado. Recargue la página e inicie sesión nuevamente.');
                             apiService.clearToken();
-                          } else if (response.status === 403) {
-                            alert('No tiene permisos para eliminar proyectos');
-                          } else if (response.status === 404) {
-                            alert('Proyecto no encontrado');
                           } else {
                             alert(response.error || 'Error al eliminar proyecto');
                           }
                         }
                       } catch (err) {
-                        console.error('💥 Error de conexión al eliminar proyecto:', err);
                         alert('Error de conexión al eliminar proyecto');
                       } finally {
                         setLoading(false);
@@ -904,12 +968,8 @@ const Proyectos: React.FC = () => {
         );
       }).filter(Boolean);
     } catch (renderErr) {
-      console.error('💥 Error al renderizar proyectos:', renderErr);
-      
-      // Solo actualizar el estado si realmente ha cambiado para evitar loops
       const errorMessage = renderErr instanceof Error ? renderErr.message : 'Error desconocido';
       if (renderError !== errorMessage) {
-        // Usar setTimeout para evitar actualizar estado durante render
         setTimeout(() => {
           setRenderError(errorMessage);
         }, 0);
@@ -928,7 +988,7 @@ const Proyectos: React.FC = () => {
       <div className="proyectos-header">
         <h1 className="proyectos-title">
           <FolderOpen className="w-8 h-8 text-red-600 mr-3" />
-          Gestión de Proyectos
+          Gestión de Comerciantes
         </h1>
         <p className="proyectos-subtitle">
           Administración y aprobación de proyectos municipales
@@ -946,10 +1006,7 @@ const Proyectos: React.FC = () => {
             <div className="flex gap-2">
               {error.includes('sesión') && (
                 <button 
-                  onClick={() => {
-                    console.log('🔄 Recargando página...');
-                    window.location.reload();
-                  }} 
+                  onClick={() => window.location.reload()} 
                   className="bg-red-600 text-white px-3 py-1 rounded text-sm hover:bg-red-700 transition-colors"
                 >
                   Recargar página
@@ -968,14 +1025,6 @@ const Proyectos: React.FC = () => {
               </button>
             </div>
           </div>
-          {/* Debug info solo en desarrollo */}
-          {process.env.NODE_ENV === 'development' && (
-            <div className="mt-2 text-xs text-red-600">
-              <p>Debug: Token presente: {apiService.isAuthenticated() ? 'SÍ' : 'NO'}</p>
-              <p>Debug: Token expirado: {apiService.isTokenExpired() ? 'SÍ' : 'NO'}</p>
-              <p>Debug: Token preview: {apiService.getCurrentToken()?.substring(0, 30) + '...' || 'N/A'}</p>
-            </div>
-          )}
         </div>
       )}
 
@@ -1153,7 +1202,7 @@ const Proyectos: React.FC = () => {
         {!loading && renderProyectos()}
       </div>
 
-      {/* Mensaje cuando no hay proyectos - mejorado */}
+      {/* Mensaje cuando no hay proyectos */}
       {!loading && !renderError && proyectos.length === 0 && (
         <div className="text-center py-12">
           <FolderOpen className="w-16 h-16 text-gray-400 mx-auto mb-4" />
@@ -1177,7 +1226,7 @@ const Proyectos: React.FC = () => {
         </div>
       )}
 
-      {/* Paginación mejorada */}
+      {/* Paginación */}
       {!loading && !renderError && totalPages > 1 && (
         <div className="flex flex-col sm:flex-row justify-between items-center bg-white px-6 py-3 border-t border-gray-200 rounded-lg shadow-sm mt-6">
           <div className="flex-1 flex justify-between sm:hidden">
@@ -1213,14 +1262,13 @@ const Proyectos: React.FC = () => {
             </div>
             
             <div>
-              <nav className="relative z-0 inline-flex rounded-md shadow-sm -space-x-px" aria-label="Pagination">
+              <nav className="relative z-0 inline-flex rounded-md shadow-sm -space-x-px">
                 <button
                   onClick={() => changePage(currentPage - 1)}
                   disabled={currentPage === 0 || !apiService.isAuthenticated() || loading}
                   className="relative inline-flex items-center px-2 py-2 rounded-l-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  <span className="sr-only">Anterior</span>
-                  <ChevronLeft className="h-5 w-5" aria-hidden="true" />
+                  <ChevronLeft className="h-5 w-5" />
                 </button>
                 
                 {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
@@ -1256,8 +1304,7 @@ const Proyectos: React.FC = () => {
                   disabled={currentPage >= totalPages - 1 || !apiService.isAuthenticated() || loading}
                   className="relative inline-flex items-center px-2 py-2 rounded-r-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  <span className="sr-only">Siguiente</span>
-                  <ChevronRight className="h-5 w-5" aria-hidden="true" />
+                  <ChevronRight className="h-5 w-5" />
                 </button>
               </nav>
             </div>
@@ -1272,9 +1319,7 @@ const Proyectos: React.FC = () => {
             <h2 className="proyectos-modal-title">Nuevo Proyecto</h2>
             <form onSubmit={crearProyecto} className="proyectos-modal-form">
               <div className="proyectos-form-group">
-                <label className="proyectos-form-label">
-                  Nombre del Proyecto *
-                </label>
+                <label className="proyectos-form-label">Nombre del Proyecto *</label>
                 <input
                   type="text"
                   value={newProyecto.nombre}
@@ -1287,9 +1332,7 @@ const Proyectos: React.FC = () => {
               </div>
               
               <div className="proyectos-form-group">
-                <label className="proyectos-form-label">
-                  Descripción *
-                </label>
+                <label className="proyectos-form-label">Descripción *</label>
                 <textarea
                   value={newProyecto.descripcion}
                   onChange={(e) => setNewProyecto({...newProyecto, descripcion: e.target.value})}
@@ -1302,9 +1345,7 @@ const Proyectos: React.FC = () => {
               </div>
               
               <div className="proyectos-form-group">
-                <label className="proyectos-form-label">
-                  Categoría
-                </label>
+                <label className="proyectos-form-label">Categoría</label>
                 <input
                   type="text"
                   value={newProyecto.categoria}
@@ -1316,9 +1357,7 @@ const Proyectos: React.FC = () => {
               </div>
               
               <div className="proyectos-form-group">
-                <label className="proyectos-form-label">
-                  Correo Electrónico
-                </label>
+                <label className="proyectos-form-label">Correo Electrónico</label>
                 <input
                   type="email"
                   value={newProyecto.email}
@@ -1330,9 +1369,7 @@ const Proyectos: React.FC = () => {
               </div>
               
               <div className="proyectos-form-group">
-                <label className="proyectos-form-label">
-                  Número de Cédula
-                </label>
+                <label className="proyectos-form-label">Número de Cédula</label>
                 <input
                   type="text"
                   value={newProyecto.cedula}
@@ -1344,9 +1381,7 @@ const Proyectos: React.FC = () => {
               </div>
               
               <div className="proyectos-form-group">
-                <label className="proyectos-form-label">
-                  Número de Teléfono
-                </label>
+                <label className="proyectos-form-label">Número de Teléfono</label>
                 <input
                   type="tel"
                   value={newProyecto.telefono}
@@ -1358,9 +1393,7 @@ const Proyectos: React.FC = () => {
               </div>
               
               <div className="proyectos-form-group">
-                <label className="proyectos-form-label">
-                  Dirección
-                </label>
+                <label className="proyectos-form-label">Dirección</label>
                 <textarea
                   value={newProyecto.address}
                   onChange={(e) => setNewProyecto({...newProyecto, address: e.target.value})}
@@ -1393,7 +1426,7 @@ const Proyectos: React.FC = () => {
         </div>
       )}
 
-      {/* *** MODAL PARA VER DOCUMENTOS *** */}
+      {/* Modal para ver documentos - EXACTAMENTE COMO EN TU IMAGEN */}
       {showDocumentsModal && selectedProyecto && (
         <div className="proyectos-modal-overlay">
           <div className="proyectos-modal max-w-4xl">
@@ -1452,13 +1485,13 @@ const Proyectos: React.FC = () => {
               </div>
             )}
 
-            {/* Documentos */}
+            {/* Documentos Disponibles - EXACTO COMO TU IMAGEN */}
             {!loadingDocuments && (
               <div className="space-y-4 mb-6">
                 <h3 className="text-lg font-medium text-gray-900 mb-4">Documentos Disponibles</h3>
                 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  {/* Certificado */}
+                  {/* Certificado - EXACTO COMO TU IMAGEN */}
                   <div className="border border-gray-200 rounded-lg p-4 hover:bg-gray-50 transition-colors">
                     <div className="flex items-center justify-between mb-3">
                       <div className="flex items-center">
@@ -1471,17 +1504,30 @@ const Proyectos: React.FC = () => {
                         </span>
                       )}
                     </div>
-                    <p className="text-sm text-gray-600 mb-3">
+                    <p className="text-sm text-gray-600 mb-4">
                       Certificado oficial del proyecto
                     </p>
                     {currentDocuments.certificate ? (
-                      <button
-                        onClick={() => descargarDocumento(currentDocuments.certificate!, `certificado_${selectedProyecto.id}.pdf`)}
-                        className="w-full bg-blue-600 text-white px-3 py-2 rounded text-sm hover:bg-blue-700 transition-colors flex items-center justify-center"
-                      >
-                        <Download className="w-4 h-4 mr-1" />
-                        Descargar
-                      </button>
+                      <div className="space-y-2">
+                        <button
+                          onClick={() => openDocumentViewer(
+                            currentDocuments.certificate!, 
+                            `certificado_${selectedProyecto.id}.pdf`, 
+                            'certificate'
+                          )}
+                          className="w-full bg-blue-600 text-white px-3 py-2 rounded text-sm hover:bg-blue-700 transition-colors flex items-center justify-center"
+                        >
+                          <Eye className="w-4 h-4 mr-1" />
+                          Ver
+                        </button>
+                        <button
+                          onClick={() => descargarDocumento(currentDocuments.certificate!, `certificado_${selectedProyecto.id}.pdf`)}
+                          className="w-full bg-green-600 text-white px-3 py-2 rounded text-sm hover:bg-green-700 transition-colors flex items-center justify-center"
+                        >
+                          <Download className="w-4 h-4 mr-1" />
+                          Descargar
+                        </button>
+                      </div>
                     ) : (
                       <div className="w-full bg-gray-100 text-gray-500 px-3 py-2 rounded text-sm text-center">
                         No disponible
@@ -1489,7 +1535,7 @@ const Proyectos: React.FC = () => {
                     )}
                   </div>
 
-                  {/* Documento de Identidad */}
+                  {/* Documento de Identidad - EXACTO COMO TU IMAGEN */}
                   <div className="border border-gray-200 rounded-lg p-4 hover:bg-gray-50 transition-colors">
                     <div className="flex items-center justify-between mb-3">
                       <div className="flex items-center">
@@ -1502,17 +1548,30 @@ const Proyectos: React.FC = () => {
                         </span>
                       )}
                     </div>
-                    <p className="text-sm text-gray-600 mb-3">
+                    <p className="text-sm text-gray-600 mb-4">
                       Documento de identidad escaneado
                     </p>
                     {currentDocuments.identityDocument ? (
-                      <button
-                        onClick={() => descargarDocumento(currentDocuments.identityDocument!, `cedula_${selectedProyecto.id}.jpg`)}
-                        className="w-full bg-green-600 text-white px-3 py-2 rounded text-sm hover:bg-green-700 transition-colors flex items-center justify-center"
-                      >
-                        <Download className="w-4 h-4 mr-1" />
-                        Descargar
-                      </button>
+                      <div className="space-y-2">
+                        <button
+                          onClick={() => openDocumentViewer(
+                            currentDocuments.identityDocument!, 
+                            `cedula_${selectedProyecto.id}.jpg`, 
+                            'identity'
+                          )}
+                          className="w-full bg-blue-600 text-white px-3 py-2 rounded text-sm hover:bg-blue-700 transition-colors flex items-center justify-center"
+                        >
+                          <Eye className="w-4 h-4 mr-1" />
+                          Ver
+                        </button>
+                        <button
+                          onClick={() => descargarDocumento(currentDocuments.identityDocument!, `cedula_${selectedProyecto.id}.jpg`)}
+                          className="w-full bg-green-600 text-white px-3 py-2 rounded text-sm hover:bg-green-700 transition-colors flex items-center justify-center"
+                        >
+                          <Download className="w-4 h-4 mr-1" />
+                          Descargar
+                        </button>
+                      </div>
                     ) : (
                       <div className="w-full bg-gray-100 text-gray-500 px-3 py-2 rounded text-sm text-center">
                         No disponible
@@ -1520,7 +1579,7 @@ const Proyectos: React.FC = () => {
                     )}
                   </div>
 
-                  {/* Documento Firmado */}
+                  {/* Documento Firmado - EXACTO COMO TU IMAGEN */}
                   <div className="border border-gray-200 rounded-lg p-4 hover:bg-gray-50 transition-colors">
                     <div className="flex items-center justify-between mb-3">
                       <div className="flex items-center">
@@ -1533,17 +1592,30 @@ const Proyectos: React.FC = () => {
                         </span>
                       )}
                     </div>
-                    <p className="text-sm text-gray-600 mb-3">
+                    <p className="text-sm text-gray-600 mb-4">
                       PDF con aprobaciones firmadas
                     </p>
                     {currentDocuments.signedDocument ? (
-                      <button
-                        onClick={() => descargarDocumento(currentDocuments.signedDocument!, `documento_firmado_${selectedProyecto.id}.pdf`)}
-                        className="w-full bg-purple-600 text-white px-3 py-2 rounded text-sm hover:bg-purple-700 transition-colors flex items-center justify-center"
-                      >
-                        <Download className="w-4 h-4 mr-1" />
-                        Descargar
-                      </button>
+                      <div className="space-y-2">
+                        <button
+                          onClick={() => openDocumentViewer(
+                            currentDocuments.signedDocument!, 
+                            `documento_firmado_${selectedProyecto.id}.pdf`, 
+                            'signed'
+                          )}
+                          className="w-full bg-blue-600 text-white px-3 py-2 rounded text-sm hover:bg-blue-700 transition-colors flex items-center justify-center"
+                        >
+                          <Eye className="w-4 h-4 mr-1" />
+                          Ver
+                        </button>
+                        <button
+                          onClick={() => descargarDocumento(currentDocuments.signedDocument!, `documento_firmado_${selectedProyecto.id}.pdf`)}
+                          className="w-full bg-purple-600 text-white px-3 py-2 rounded text-sm hover:bg-purple-700 transition-colors flex items-center justify-center"
+                        >
+                          <Download className="w-4 h-4 mr-1" />
+                          Descargar
+                        </button>
+                      </div>
                     ) : (
                       <div className="w-full bg-gray-100 text-gray-500 px-3 py-2 rounded text-sm text-center">
                         No disponible
@@ -1598,7 +1670,7 @@ const Proyectos: React.FC = () => {
         </div>
       )}
 
-      {/* *** MODAL PARA OBSERVACIONES DE RECHAZO - MEJORADO *** */}
+      {/* Modal para observaciones de rechazo */}
       {showObservationModal && selectedProyecto && (
         <div className="proyectos-modal-overlay">
           <div className="proyectos-modal max-w-2xl">
@@ -1889,13 +1961,9 @@ const Proyectos: React.FC = () => {
                   address: newProyecto.address.trim() || undefined
                 };
                 
-                console.log('✏️ Actualizando proyecto:', selectedProyecto.id, proyectoData);
-                
                 const response = await apiService.updateProyecto(selectedProyecto.id, proyectoData);
-                console.log('📡 Respuesta de actualización:', response);
                 
                 if (response.success) {
-                  console.log('🎉 Proyecto actualizado exitosamente');
                   setShowEditModal(false);
                   setSelectedProyecto(null);
                   setNewProyecto({
@@ -1912,7 +1980,6 @@ const Proyectos: React.FC = () => {
                   await loadProyectos();
                   alert('Proyecto actualizado exitosamente');
                 } else {
-                  console.error('❌ Error al actualizar:', response.error);
                   if (response.status === 401) {
                     setError('Su sesión ha expirado. Recargue la página e inicie sesión nuevamente.');
                     apiService.clearToken();
@@ -1921,16 +1988,13 @@ const Proyectos: React.FC = () => {
                   }
                 }
               } catch (err) {
-                console.error('💥 Error de conexión al actualizar proyecto:', err);
                 alert('Error de conexión al actualizar proyecto');
               } finally {
                 setLoading(false);
               }
             }} className="proyectos-modal-form">
               <div className="proyectos-form-group">
-                <label className="proyectos-form-label">
-                  Nombre del Proyecto *
-                </label>
+                <label className="proyectos-form-label">Nombre del Proyecto *</label>
                 <input
                   type="text"
                   value={newProyecto.nombre}
@@ -1943,9 +2007,7 @@ const Proyectos: React.FC = () => {
               </div>
               
               <div className="proyectos-form-group">
-                <label className="proyectos-form-label">
-                  Descripción *
-                </label>
+                <label className="proyectos-form-label">Descripción *</label>
                 <textarea
                   value={newProyecto.descripcion}
                   onChange={(e) => setNewProyecto({...newProyecto, descripcion: e.target.value})}
@@ -1958,9 +2020,7 @@ const Proyectos: React.FC = () => {
               </div>
               
               <div className="proyectos-form-group">
-                <label className="proyectos-form-label">
-                  Categoría
-                </label>
+                <label className="proyectos-form-label">Categoría</label>
                 <input
                   type="text"
                   value={newProyecto.categoria}
@@ -1972,9 +2032,7 @@ const Proyectos: React.FC = () => {
               </div>
               
               <div className="proyectos-form-group">
-                <label className="proyectos-form-label">
-                  Correo Electrónico
-                </label>
+                <label className="proyectos-form-label">Correo Electrónico</label>
                 <input
                   type="email"
                   value={newProyecto.email}
@@ -1986,9 +2044,7 @@ const Proyectos: React.FC = () => {
               </div>
               
               <div className="proyectos-form-group">
-                <label className="proyectos-form-label">
-                  Número de Cédula
-                </label>
+                <label className="proyectos-form-label">Número de Cédula</label>
                 <input
                   type="text"
                   value={newProyecto.cedula}
@@ -2000,9 +2056,7 @@ const Proyectos: React.FC = () => {
               </div>
               
               <div className="proyectos-form-group">
-                <label className="proyectos-form-label">
-                  Número de Teléfono
-                </label>
+                <label className="proyectos-form-label">Número de Teléfono</label>
                 <input
                   type="tel"
                   value={newProyecto.telefono}
@@ -2014,9 +2068,7 @@ const Proyectos: React.FC = () => {
               </div>
               
               <div className="proyectos-form-group">
-                <label className="proyectos-form-label">
-                  Dirección
-                </label>
+                <label className="proyectos-form-label">Dirección</label>
                 <textarea
                   value={newProyecto.address}
                   onChange={(e) => setNewProyecto({...newProyecto, address: e.target.value})}
@@ -2062,6 +2114,18 @@ const Proyectos: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Visor de documentos - VENTANA FLOTANTE COMPLETA */}
+      <DocumentViewer
+        isOpen={showDocumentViewer}
+        onClose={() => {
+          setShowDocumentViewer(false);
+          setCurrentViewDocument(null);
+        }}
+        documentData={currentViewDocument?.data}
+        documentName={currentViewDocument?.name}
+        documentType={currentViewDocument?.type}
+      />
 
       {/* Debug info en desarrollo */}
       {process.env.NODE_ENV === 'development' && (

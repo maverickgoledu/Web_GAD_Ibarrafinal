@@ -17,7 +17,7 @@ const App: React.FC = () => {
     const syncAuthentication = () => {
       // 1. Verificar localStorage (tu sistema actual)
       const savedAuth = localStorage.getItem('isAuthenticated');
-      const savedToken = localStorage.getItem('authToken');
+      const savedToken = localStorage.getItem('authToken') || localStorage.getItem('auth_token') || localStorage.getItem('token');
       
       console.log('🔍 Estado localStorage:', {
         isAuthenticated: savedAuth,
@@ -45,7 +45,9 @@ const App: React.FC = () => {
       if (apiServiceAuth && apiServiceToken && savedAuth !== 'true') {
         console.log('🔄 Sincronizando: ApiService → localStorage');
         localStorage.setItem('isAuthenticated', 'true');
-        localStorage.setItem('authToken', apiServiceToken);
+          localStorage.setItem('authToken', apiServiceToken);
+          localStorage.setItem('auth_token', apiServiceToken);
+          localStorage.setItem('token', apiServiceToken);
       }
       
       // 5. Determinar estado final
@@ -93,6 +95,8 @@ const App: React.FC = () => {
         console.log('💾 Guardando en localStorage...');
         localStorage.setItem('isAuthenticated', 'true');
         localStorage.setItem('authToken', finalToken);
+        localStorage.setItem('auth_token', finalToken);
+        localStorage.setItem('token', finalToken);
         
         console.log('💾 Sincronizando con ApiService...');
         apiService.setToken(finalToken);
