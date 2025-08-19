@@ -150,6 +150,14 @@ const LocalesComerciales: React.FC = () => {
   const [currentDocuments, setCurrentDocuments] = useState<DocumentoNegocio>({});
   const [loadingDocuments, setLoadingDocuments] = useState(false);
   const [documentError, setDocumentError] = useState<string>('');
+  
+  // Estados para archivos del negocio
+  const [businessFiles, setBusinessFiles] = useState<{
+    logoFile?: File;
+    signatureFile?: File;
+    cedulaFile?: File;
+    carrouselPhotos?: File[];
+  }>({});
 
   // Función unificada para verificar token
   const verificarToken = (): boolean => {
@@ -349,20 +357,20 @@ const LocalesComerciales: React.FC = () => {
         size: size.toString(),
       });
       
-      console.log('🔍 Usando endpoint de negocios públicos...');
-      const response = await apiService.request<PaginatedBusinessResponse>(`/business/public-list-by-category?${params}`, {
+      console.log('🔍 Usando endpoint de negocios públicos aprobados...');
+      const response = await apiService.request<PaginatedBusinessResponse>(`/business/public/approved?${params}`, {
         method: 'GET'
       });
       
       console.log('📡 Respuesta de la API:', response);
       
-      if (response.success && response.data) {
+      if (response.success && response.data && response.data.data && response.data.data.content && Array.isArray(response.data.data.content)) {
         console.log('✅ Negocios cargados exitosamente');
-        console.log('📋 Cantidad de negocios:', response.data.content.length);
-        console.log('🔍 Datos de negocios recibidos:', response.data.content);
+        console.log('📋 Cantidad de negocios:', response.data.data.content.length);
+        console.log('🔍 Datos de negocios recibidos:', response.data.data.content);
         
         // Validar y limpiar datos antes de setear
-        const negociosLimpios = response.data.content.filter(negocio => {
+        const negociosLimpios = response.data.data.content.filter(negocio => {
           if (!negocio || !negocio.id) {
             console.warn('⚠️ Negocio filtrado por datos incompletos:', negocio);
             return false;
@@ -373,9 +381,9 @@ const LocalesComerciales: React.FC = () => {
         console.log('📋 Negocios después del filtrado:', negociosLimpios.length);
         
         setNegocios(negociosLimpios);
-        setTotalPages(response.data.totalPages);
-        setTotalElements(response.data.totalElements);
-        setCurrentPage(response.data.page - 1); // La API devuelve page base 1, convertir a base 0
+        setTotalPages(response.data.data.totalPages || 0);
+        setTotalElements(response.data.data.totalElements || 0);
+        setCurrentPage((response.data.data.page || 1) - 1); // La API devuelve page base 1, convertir a base 0
         
         // Aplicar filtros después de cargar los negocios
         setTimeout(() => filtrarNegocios(), 0);
@@ -384,7 +392,7 @@ const LocalesComerciales: React.FC = () => {
         setRenderError('');
         
         // Calcular estadísticas
-        calculateStats(negociosLimpios, response.data.totalElements);
+        calculateStats(negociosLimpios, response.data.data.totalElements || 0);
         
       } else {
         console.error('❌ Error en respuesta:', response.error || response.message);
@@ -423,12 +431,24 @@ const LocalesComerciales: React.FC = () => {
 
   // Calcular estadísticas
   const calculateStats = (negociosList: BusinessAPI[], total: number) => {
-    const pendientes = negociosList.filter(n => n.validationStatus === 'PENDING').length;
-    const aprobados = negociosList.filter(n => n.validationStatus === 'APPROVED').length;
-    const rechazados = negociosList.filter(n => n.validationStatus === 'REJECTED').length;
+    // Verificar que negociosList sea un array válido
+    if (!Array.isArray(negociosList)) {
+      console.warn('⚠️ calculateStats: negociosList no es un array válido:', negociosList);
+      setStats({
+        totalNegocios: 0,
+        pendientes: 0,
+        aprobados: 0,
+        rechazados: 0
+      });
+      return;
+    }
+
+    const pendientes = negociosList.filter(n => n && n.validationStatus === 'PENDING').length;
+    const aprobados = negociosList.filter(n => n && n.validationStatus === 'APPROVED').length;
+    const rechazados = negociosList.filter(n => n && n.validationStatus === 'REJECTED').length;
     
     setStats({
-      totalNegocios: total,
+      totalNegocios: total || 0,
       pendientes,
       aprobados,
       rechazados
@@ -479,8 +499,14 @@ const LocalesComerciales: React.FC = () => {
   const crearNegocio = async (e: React.FormEvent) => {
     e.preventDefault();
     
+    // Validaciones básicas
     if (!newNegocio.commercialName.trim() || !newNegocio.representativeName.trim()) {
       alert('Nombre comercial y representante son requeridos');
+      return;
+    }
+    
+    if (!businessFiles.cedulaFile) {
+      alert('El archivo de cédula/RUC es obligatorio');
       return;
     }
     
@@ -488,31 +514,36 @@ const LocalesComerciales: React.FC = () => {
       if (!verificarToken()) return;
       
       setLoading(true);
-      const negocioData = {
+      
+      // Crear el DTO con los campos requeridos
+      const businessData = {
+        categoryId: newNegocio.categoryId || 1,
         commercialName: newNegocio.commercialName.trim(),
         representativeName: newNegocio.representativeName.trim(),
-        cedulaOrRuc: newNegocio.cedulaOrRuc.trim(),
         phone: newNegocio.phone.trim(),
         email: newNegocio.email.trim(),
         parishCommunitySector: newNegocio.parishCommunitySector.trim(),
-        facebook: newNegocio.facebook.trim(),
-        instagram: newNegocio.instagram.trim(),
-        tiktok: newNegocio.tiktok.trim(),
-        website: newNegocio.website.trim(),
         description: newNegocio.description.trim(),
-        productsServices: newNegocio.productsServices.trim(),
+        productsServices: newNegocio.productsServices ? [newNegocio.productsServices.trim()] : [],
         acceptsWhatsappOrders: newNegocio.acceptsWhatsappOrders,
-        deliveryService: newNegocio.deliveryService,
-        salePlace: newNegocio.salePlace,
-        categoryId: newNegocio.categoryId
+        deliveryService: newNegocio.deliveryService === 'BAJO_PEDIDO' ? 'NO' : 'SI',
+        salePlace: newNegocio.salePlace === 'LOCAL' ? 'LOCAL_FIJO' : 
+                  newNegocio.salePlace === 'FERIAS' ? 'AMBULANTE' : 'OTRO',
+        registrationDate: new Date().toISOString().split('T')[0], // LocalDate format
+        address: newNegocio.parishCommunitySector.trim(), // Using the same field
+        googleMapsCoordinates: '0,0', // Default coordinates
+        schedules: [], // Empty array as allowed
+        
+        // Campos opcionales
+        facebook: newNegocio.facebook.trim() || undefined,
+        instagram: newNegocio.instagram.trim() || undefined,
+        tiktok: newNegocio.tiktok.trim() || undefined,
+        website: newNegocio.website.trim() || undefined
       };
       
-      console.log('➕ Creando negocio:', negocioData);
+      console.log('➕ Creando negocio con multipart:', businessData);
       
-      const response = await apiService.request<BusinessAPI>('/business/create', {
-        method: 'POST',
-        body: JSON.stringify(negocioData)
-      });
+      const response = await apiService.createBusiness(businessData, businessFiles);
       
       console.log('📡 Respuesta de creación:', response);
       
@@ -537,6 +568,7 @@ const LocalesComerciales: React.FC = () => {
           salePlace: 'LOCAL',
           categoryId: 1
         });
+        setBusinessFiles({}); // Reset files
         await loadNegocios();
         alert('Negocio creado exitosamente');
       } else {
@@ -1386,6 +1418,84 @@ const LocalesComerciales: React.FC = () => {
                     />
                     Acepta pedidos por WhatsApp
                   </label>
+                </div>
+                
+                {/* Archivos requeridos */}
+                <div className="locales-form-group">
+                  <label className="locales-form-label">
+                    Archivo de Cédula/RUC *
+                  </label>
+                  <input
+                    type="file"
+                    accept="image/*,.pdf"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) {
+                        setBusinessFiles({...businessFiles, cedulaFile: file});
+                      }
+                    }}
+                    className="locales-form-input"
+                    disabled={!apiService.isAuthenticated() || loading}
+                    required
+                  />
+                  <small style={{color: '#666', fontSize: '12px'}}>Archivo obligatorio de cédula o RUC</small>
+                </div>
+                
+                {/* Archivos opcionales */}
+                <div className="locales-form-group">
+                  <label className="locales-form-label">
+                    Logo del Negocio (Opcional)
+                  </label>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) {
+                        setBusinessFiles({...businessFiles, logoFile: file});
+                      }
+                    }}
+                    className="locales-form-input"
+                    disabled={!apiService.isAuthenticated() || loading}
+                  />
+                </div>
+                
+                <div className="locales-form-group">
+                  <label className="locales-form-label">
+                    Archivo de Firma (Opcional)
+                  </label>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) {
+                        setBusinessFiles({...businessFiles, signatureFile: file});
+                      }
+                    }}
+                    className="locales-form-input"
+                    disabled={!apiService.isAuthenticated() || loading}
+                  />
+                </div>
+                
+                <div className="locales-form-group">
+                  <label className="locales-form-label">
+                    Fotos para Carrusel (Opcional)
+                  </label>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    onChange={(e) => {
+                      const files = Array.from(e.target.files || []);
+                      if (files.length > 0) {
+                        setBusinessFiles({...businessFiles, carrouselPhotos: files});
+                      }
+                    }}
+                    className="locales-form-input"
+                    disabled={!apiService.isAuthenticated() || loading}
+                  />
+                  <small style={{color: '#666', fontSize: '12px'}}>Puede seleccionar múltiples imágenes</small>
                 </div>
               </div>
               <div className="locales-modal-actions">

@@ -6,7 +6,13 @@ import {
   User, 
   ProyectoBase, 
   ProyectoAPI, 
-  PaginatedResponse 
+  PaginatedResponse,
+  CreateNewBusinessDTO,
+  BusinessFiles,
+  CreateBusinessRequest,
+  BusinessAPI,
+  PaginatedBusinessResponse,
+  ApprovedBusinessResponse
 } from './interfaces';
 
 export class ApiService {
@@ -1097,20 +1103,37 @@ export class ApiService {
   // *** MÉTODOS ESPECÍFICOS PARA NEGOCIOS ***
 
   /**
-   * Obtiene la lista paginada de negocios públicos por categoría
+   * Obtiene la lista paginada de negocios privados por categoría (ADMIN)
    * @param page Número de página (base 0)
    * @param size Tamaño de página
    * @param category Categoría opcional para filtrar
    * @returns Lista paginada de negocios
    */
-  public async getBusinessList(page: number = 0, size: number = 10, category?: string): Promise<ApiResponse<any>> {
+  public async getBusinessList(page: number = 0, size: number = 10, category?: string): Promise<ApiResponse<PaginatedBusinessResponse>> {
     const params = new URLSearchParams({
-      page: (page + 1).toString(), // La API usa páginas base 1
+      page: page.toString(), // Usar page directamente
       size: size.toString(),
       ...(category && { category })
     });
 
-    return this.request<any>(`/business/public-list-by-category?${params}`, {
+    return this.request<PaginatedBusinessResponse>(`/business/private-list-by-category?${params}`, {
+      method: 'GET'
+    });
+  }
+
+  /**
+   * Obtiene la lista paginada de negocios públicos aprobados
+   * @param page Número de página (base 0)
+   * @param size Tamaño de página
+   * @returns Lista paginada de negocios aprobados
+   */
+  public async getApprovedBusinessList(page: number = 0, size: number = 10): Promise<ApiResponse<ApprovedBusinessResponse>> {
+    const params = new URLSearchParams({
+      page: page.toString(),
+      size: size.toString()
+    });
+
+    return this.request<ApprovedBusinessResponse>(`/business/public/approved?${params}`, {
       method: 'GET'
     });
   }
@@ -1173,15 +1196,71 @@ export class ApiService {
   }
 
   /**
-   * Crea un nuevo negocio
-   * @param businessData Datos del negocio
+   * Crea un nuevo negocio con archivos (multipart/form-data)
+   * @param businessData Datos del negocio (CreateNewBusinessDTO)
+   * @param files Archivos del negocio (BusinessFiles)
    * @returns Negocio creado
    */
-  public async createBusiness(businessData: any): Promise<ApiResponse<any>> {
-    return this.request<any>('/business/create', {
-      method: 'POST',
-      body: JSON.stringify(businessData)
-    });
+  public async createBusiness(businessData: CreateNewBusinessDTO, files: BusinessFiles): Promise<ApiResponse<BusinessAPI>> {
+    try {
+      const formData = new FormData();
+      
+      // Agregar los datos del negocio como JSON string
+      formData.append('business', JSON.stringify(businessData));
+      
+      // Agregar archivos obligatorios
+      if (files.cedulaFile) {
+        formData.append('cedulaFile', files.cedulaFile);
+      } else {
+        throw new Error('El archivo de cédula/RUC es obligatorio');
+      }
+      
+      // Agregar archivos opcionales
+      if (files.logoFile) {
+        formData.append('logoFile', files.logoFile);
+      }
+      
+      if (files.signatureFile) {
+        formData.append('signatureFile', files.signatureFile);
+      }
+      
+      // Agregar múltiples fotos del carrusel
+      if (files.carrouselPhotos && files.carrouselPhotos.length > 0) {
+        files.carrouselPhotos.forEach((photo) => {
+          formData.append('carrouselPhotos', photo);
+        });
+      }
+
+      // Realizar petición sin Content-Type para que el browser establezca multipart/form-data
+      const token = this.getAuthToken();
+      const response = await fetch(`${this.API_BASE_URL}/business/create`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+        body: formData
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`HTTP ${response.status}: ${errorText}`);
+      }
+
+      const data = await response.json();
+      return {
+        success: true,
+        data: data,
+        message: 'Negocio creado exitosamente'
+      };
+
+    } catch (error) {
+      console.error('Error creando negocio:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Error creando negocio',
+        message: 'Error al crear el negocio'
+      };
+    }
   }
 
   /**
